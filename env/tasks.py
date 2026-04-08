@@ -2,32 +2,35 @@ def load_task(level):
     if level == "easy":
         return {
             "tickets": [
-                {"id": 1, "text": "I was charged twice for my subscription"}
+                {"id": 1, "text": "I was charged twice for my subscription."}
             ],
             "expected": {
-                "classification": "billing"
+                "classification": "billing",
+                "priority": "high"
             }
         }
 
     elif level == "medium":
         return {
             "tickets": [
-                {"id": 1, "text": "App crashes when I open settings"}
+                {"id": 1, "text": "App crashes when I open settings. This is very frustrating."}
             ],
             "expected": {
                 "classification": "technical",
-                "keywords": ["crash", "settings"]
+                "sentiment": "angry",
+                "policy": "troubleshoot"
             }
         }
 
     elif level == "hard":
         return {
             "tickets": [
-                {"id": 1, "text": "Payment failed but money deducted. Need refund ASAP"}
+                {"id": 1, "text": "Payment deducted but no confirmation received."}
             ],
             "expected": {
                 "classification": "billing",
-                "action": "refund",
-                "escalate": True
+                "needs_info": True,
+                "decision": "resolve",
+                "final_keywords": ["refund", "transaction", "confirm"]
             }
         }
