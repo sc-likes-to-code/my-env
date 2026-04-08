@@ -13,7 +13,7 @@ API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
 
 API_BASE_URL = os.getenv("API_BASE_URL") or "https://router.huggingface.co/v1"
 MODEL_NAME = os.getenv("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
-TASK_NAME = os.getenv("MY_ENV_V4_TASK", "easy")
+TASK_NAME = os.getenv("MY_ENV_V4_TASK", "hard")
 BENCHMARK = os.getenv("MY_ENV_V4_BENCHMARK", "support_env")
 MAX_STEPS = 8
 TEMPERATURE = 0.7
@@ -45,6 +45,7 @@ Rules:
 
 Be consistent across steps.
 Do NOT skip steps.
+Do NOT repeat the same action multiple times.
 """
 
 
@@ -155,9 +156,10 @@ def _extract_current_ticket(observation: dict) -> tuple[int, str]:
     if not tickets:
         return 0, ""
 
-    current_ticket = tickets[0] or {}
+    current_ticket = tickets[0]
     ticket_id = int(current_ticket.get("id") or observation.get("current_ticket_id") or 0)
     ticket_text = str(current_ticket.get("text") or "")
+
     return ticket_id, ticket_text
 
 
@@ -165,7 +167,7 @@ def main() -> None:
     client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY) if API_KEY else None
 
     env = SupportEnv()
-    observation = env.reset(TASK_NAME)
+    observation = env.reset(TASK_NAME).model_dump()
 
     history: List[str] = []
     rewards: List[float] = []
@@ -201,8 +203,8 @@ def main() -> None:
             if done:
                 break
 
-        score = sum(rewards) / len(rewards) if rewards else 0.0
-        score = min(max(score, 0.0), 1.0)  # clamp to [0, 1]
+        score = sum(rewards)
+        score = min(score, 1.0)
         success = score >= SUCCESS_SCORE_THRESHOLD
 
     finally:

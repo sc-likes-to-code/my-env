@@ -1,5 +1,5 @@
 from env.tasks import load_task
-from env.graders import evaluate_action
+from env.grader import evaluate_action
 from env.models import Observation, Ticket
 
 class SupportEnv:
@@ -32,6 +32,7 @@ class SupportEnv:
 
         done = (
             reward.score >= 0.9
+            or action.action_type == "respond"
             or self.state_data["step_count"] >= 6
         )
 
