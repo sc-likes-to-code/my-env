@@ -5,15 +5,15 @@ from typing import List, Optional
 
 from openai import OpenAI
 
-from env.environment import SupportEnv
-from env.models import Action
+from server.your_environment import SupportEnv
+from models import Action
 
 IMAGE_NAME = os.getenv("IMAGE_NAME") # If you are using docker image 
 API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
 
 API_BASE_URL = os.getenv("API_BASE_URL") or "https://router.huggingface.co/v1"
 MODEL_NAME = os.getenv("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
-TASK_NAME = os.getenv("MY_ENV_V4_TASK", "hard")
+TASK_NAME = os.getenv("MY_ENV_V4_TASK", "easy")
 BENCHMARK = os.getenv("MY_ENV_V4_BENCHMARK", "support_env")
 MAX_STEPS = 8
 TEMPERATURE = 0.7

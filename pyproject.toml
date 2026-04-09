@@ -1,0 +1,16 @@
+[project]
+name = "openenv-customer-support-env"
+version = "0.1.0"
+description = "Customer support OpenEnv with multi-step reasoning and memory"
+authors = [{ name = "Your Name" }]
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "pydantic",
+    "requests",
+    "openai"
+]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"

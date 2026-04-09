@@ -1,6 +1,6 @@
-from env.tasks import load_task
-from env.grader import evaluate_action
-from env.models import Observation, Ticket
+from tasks import load_task
+from grader import evaluate_action
+from models import Observation, Ticket
 
 class SupportEnv:
     def __init__(self):
