@@ -1,0 +1,3 @@
+name: openenv-customer-support-env
+description: Multi-step customer support environment with memory
+entrypoint: server.app:app
