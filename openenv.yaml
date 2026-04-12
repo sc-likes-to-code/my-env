@@ -1,3 +1,118 @@
 name: openenv-customer-support-env
-description: Multi-step customer support environment with memory
+version: "1.0.0"
+description: >
+  A multi-step customer support ticket resolution environment where an AI agent
+  must classify issues, extract information, follow policies, and resolve or
+  escalate tickets across increasing difficulty levels.
+author: "Your Name"
+tags:
+  - openenv
+  - customer-support
+  - multi-step
+  - nlp
+  - real-world
+
 entrypoint: server.app:app
+
+endpoints:
+  reset: POST /reset
+  step: POST /step
+  state: GET /state
+
+tasks:
+  - id: easy
+    name: "Ticket Classification & Priority"
+    description: >
+      Agent must classify a support ticket into the correct category (billing/technical)
+      and provide an appropriate response acknowledging the issue.
+    difficulty: easy
+    max_steps: 8
+    reward_range: [0.0, 1.0]
+
+  - id: medium
+    name: "Sentiment-Aware Policy Resolution"
+    description: >
+      Agent must detect issue type and sentiment, then generate a policy-compliant
+      response that includes appropriate troubleshooting or refund language.
+    difficulty: medium
+    max_steps: 8
+    reward_range: [0.0, 1.0]
+
+  - id: hard
+    name: "Multi-Turn Memory-Based Resolution"
+    description: >
+      Agent must classify, ask for missing information, use conversation memory,
+      and decide whether to resolve or escalate. Penalizes repetition and
+      unnecessary escalation.
+    difficulty: hard
+    max_steps: 8
+    reward_range: [0.0, 1.0]
+
+observation_space:
+  type: object
+  fields:
+    tickets:
+      type: array
+      items:
+        type: object
+        fields:
+          id:
+            type: integer
+            description: Unique ticket identifier
+          text:
+            type: string
+            description: The customer's support message
+    current_ticket_id:
+      type: integer
+      nullable: true
+      description: ID of the ticket currently being handled
+    history:
+      type: array
+      description: List of prior user-agent interaction turns
+      items:
+        type: object
+        fields:
+          user:
+            type: string
+          agent:
+            type: string
+
+action_space:
+  type: object
+  fields:
+    action_type:
+      type: string
+      enum: [classify, respond, escalate, ask]
+      description: >
+        classify → categorize the ticket issue type.
+        respond  → provide a resolution or acknowledgment.
+        escalate → hand off to a human agent.
+        ask      → request clarifying information from the user.
+    ticket_id:
+      type: integer
+      description: ID of the ticket this action applies to
+    content:
+      type: string
+      nullable: true
+      description: >
+        The text content of the action.
+        For classify: the category label (billing/technical).
+        For respond/ask/escalate: the message text.
+
+reward:
+  type: dense
+  range: [0.0, 1.0]
+  description: >
+    Rewards are shaped across the full trajectory.
+    Partial credit is awarded for each correct intermediate step.
+    Penalties are applied for repeated actions, unnecessary escalations,
+    and responses that skip required information-gathering steps.
+  shaping:
+    - "+0.2 to +0.5 for correct classification"
+    - "+0.2 to +0.4 for policy-compliant response"
+    - "+0.2 for asking the right clarifying question"
+    - "+0.1 efficiency bonus for fast resolution"
+    - "+0.1 memory usage bonus"
+    - "-0.2 for repeated identical actions"
+    - "-0.2 for unnecessary escalation"
+    - "-0.3 for responding without gathering required info"

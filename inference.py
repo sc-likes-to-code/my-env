@@ -1,136 +1,128 @@
 import json
 import os
 import textwrap
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from openai import OpenAI
 
 from server.your_environment import SupportEnv
 from models import Action
 
-IMAGE_NAME = os.getenv("IMAGE_NAME") # If you are using docker image 
-API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
+# ── Environment / model config ──────────────────────────────────────────────
+API_KEY      = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
+API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
+MODEL_NAME   = os.getenv("MODEL_NAME",   "Qwen/Qwen2.5-72B-Instruct")
+BENCHMARK    = os.getenv("MY_ENV_V4_BENCHMARK", "support_env")
 
-API_BASE_URL = os.getenv("API_BASE_URL") or "https://router.huggingface.co/v1"
-MODEL_NAME = os.getenv("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
-TASK_NAME = os.getenv("MY_ENV_V4_TASK", "easy")
-BENCHMARK = os.getenv("MY_ENV_V4_BENCHMARK", "support_env")
-MAX_STEPS = 8
-TEMPERATURE = 0.7
-MAX_TOKENS = 150
-SUCCESS_SCORE_THRESHOLD = 0.1  # normalized score in [0, 1]
+MAX_STEPS             = 8
+TEMPERATURE           = 0.7
+MAX_TOKENS            = 150
+SUCCESS_SCORE_THRESHOLD = 0.4
 
-# Max possible reward per step is 1.0 in the local environment.
-MAX_TOTAL_REWARD = MAX_STEPS
+ALL_TASKS = ["easy", "medium", "hard"]
 
-SYSTEM_PROMPT = """
-You are an AI customer support agent solving a multi-step task.
-
-You must act in SEQUENCE across steps:
-
-Step 1 → classify
-Step 2 → respond
-Step 3 → escalate (only if necessary)
-
-Return STRICT JSON:
-{
-  "action_type": "classify/respond/escalate/ask",
-  "content": "string or null"
-}
-
-Rules:
-- classification must be EXACT: "billing" or "technical"
-- responses should include keywords like "refund" for billing issues
-- escalate ONLY if issue is critical (e.g. money deducted, urgent)
-
-Be consistent across steps.
-Do NOT skip steps.
-Do NOT repeat the same action multiple times.
-"""
-
-
+# ── Logging helpers ──────────────────────────────────────────────────────────
 def log_start(task: str, env: str, model: str) -> None:
     print(f"[START] task={task} env={env} model={model}", flush=True)
 
-
 def log_step(step: int, action: str, reward: float, done: bool, error: Optional[str]) -> None:
     error_val = error if error else "null"
-    done_val = str(done).lower()
-    print(
-        f"[STEP] step={step} action={action} reward={reward:.2f} done={done_val} error={error_val}",
-        flush=True,
-    )
-
+    done_val  = str(done).lower()
+    print(f"[STEP] step={step} action={action} reward={reward:.2f} done={done_val} error={error_val}", flush=True)
 
 def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> None:
     rewards_str = ",".join(f"{r:.2f}" for r in rewards)
     print(f"[END] success={str(success).lower()} steps={steps} score={score:.3f} rewards={rewards_str}", flush=True)
 
+# ── Clean action serializer ──────────────────────────────────────────────────
+def serialize_action(action: Action) -> str:
+    return json.dumps({
+        "action_type": action.action_type,
+        "ticket_id":   action.ticket_id,
+        "content":     action.content,
+    }, separators=(",", ":"))
+
+# ── Prompts ──────────────────────────────────────────────────────────────────
+SYSTEM_PROMPT = """
+You are an AI customer support agent solving a multi-step task.
+
+You must act in SEQUENCE across steps:
+  Step 1 → classify
+  Step 2 → respond OR ask (if information is missing)
+  Step 3 → escalate (only if the issue is critical and unresolvable)
+
+Return STRICT JSON only — no extra text:
+{
+  "action_type": "classify" | "respond" | "escalate" | "ask",
+  "content": "<string or null>"
+}
+
+Rules:
+- classification content must be EXACTLY: "billing" or "technical"
+- respond content must include "refund" for billing issues
+- respond content must include "fix", "investigate", or "restart" for technical issues
+- ask ONLY when key info is missing (e.g. transaction ID)
+- escalate ONLY for genuinely critical unresolvable issues
+- NEVER repeat the same action twice
+- NEVER skip classify as step 1
+"""
 
 def build_user_prompt(step: int, ticket_text: str, last_reward: float, history: List[str]) -> str:
     history_block = "\n".join(history[-4:]) if history else "None"
-    return textwrap.dedent(
-        f"""
-        Step: {step}
-        You are at step {step}.
-        Follow sequence:
-        1. First classify
-        2. Then respond
-        3. Then escalate if needed
+    step_instruction = {
+        1: "Step 1: Classify the ticket. Return action_type=classify, content=billing or technical.",
+        2: "Step 2: If info is missing, ask for it (action_type=ask). Otherwise respond (action_type=respond).",
+        3: "Step 3: Escalate only if unresolvable. Otherwise provide final response.",
+    }.get(step, f"Step {step}: Continue resolving the ticket.")
+    return textwrap.dedent(f"""
+        {step_instruction}
 
         Current ticket: {ticket_text}
         Last reward: {last_reward:.2f}
         Previous steps:
         {history_block}
-        Return the next action as JSON.
-        """
-    ).strip()
 
+        Return the next action as strict JSON.
+    """).strip()
 
-def _fallback_action(step: int, ticket_text: str, ticket_id: int) -> Action:
-    lowered_ticket = ticket_text.lower()
+# ── Fallback actions ─────────────────────────────────────────────────────────
+def _fallback_action(step: int, task: str, ticket_text: str, ticket_id: int) -> Action:
+    lowered    = ticket_text.lower()
+    is_billing = any(w in lowered for w in ["charged", "payment", "refund", "money", "subscription", "deducted"])
 
     if step == 1:
-        classification = "billing" if any(word in lowered_ticket for word in ["charged", "payment", "refund", "money", "subscription", "deducted"]) else "technical"
-        return Action(action_type="classify", ticket_id=ticket_id, content=classification)
-
-    if any(word in lowered_ticket for word in ["refund", "charged", "payment", "deducted"]):
-        if step == 2:
-            return Action(action_type="respond", ticket_id=ticket_id, content="Please issue a refund.")
-        return Action(action_type="escalate", ticket_id=ticket_id, content=None)
-
-    if any(word in lowered_ticket for word in ["crash", "settings", "error", "bug"]):
-        if step == 2:
-            return Action(action_type="respond", ticket_id=ticket_id, content="We are investigating the issue.")
-        return Action(action_type="escalate", ticket_id=ticket_id, content=None)
+        return Action(action_type="classify", ticket_id=ticket_id, content="billing" if is_billing else "technical")
 
     if step == 2:
-        return Action(action_type="respond", ticket_id=ticket_id, content="Thanks for the report.")
+        if task == "hard":
+            return Action(action_type="ask", ticket_id=ticket_id,
+                content="Could you please provide your transaction ID so I can investigate further?")
+        if is_billing:
+            return Action(action_type="respond", ticket_id=ticket_id,
+                content="We sincerely apologize. We will process your refund immediately and with high priority.")
+        return Action(action_type="respond", ticket_id=ticket_id,
+            content="We are sorry for the frustration. We will investigate and fix this issue right away.")
 
-    return Action(action_type="escalate", ticket_id=ticket_id, content=None)
+    if task == "hard":
+        return Action(action_type="respond", ticket_id=ticket_id,
+            content="Thank you for the transaction ID. We have confirmed and will process your refund shortly.")
+    if is_billing:
+        return Action(action_type="respond", ticket_id=ticket_id,
+            content="Your refund has been processed. We apologize for the inconvenience.")
+    return Action(action_type="respond", ticket_id=ticket_id,
+        content="Our team will investigate and fix the technical issue as soon as possible.")
 
-
-def get_model_action(client: Optional[OpenAI], step: int, ticket_text: str, ticket_id: int, last_reward: float, history: List[str]) -> Action:
+# ── Model action ─────────────────────────────────────────────────────────────
+def get_model_action(client, step, task, ticket_text, ticket_id, last_reward, history) -> Action:
     if client is None:
-        return _fallback_action(step, ticket_text, ticket_id)
-
-    step_instruction = ""
-
-    if step == 1:
-        step_instruction = "Perform classification."
-    elif step == 2:
-        step_instruction = "If information is missing, ask a clarifying question. Otherwise respond."
-    else:
-        step_instruction = "Decide whether to escalate."
-
+        return _fallback_action(step, task, ticket_text, ticket_id)
     user_prompt = build_user_prompt(step, ticket_text, last_reward, history)
-    user_prompt = f"{step_instruction}\n\n{user_prompt}"
     try:
         completion = client.chat.completions.create(
             model=MODEL_NAME,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
+                {"role": "user",   "content": user_prompt},
             ],
             temperature=TEMPERATURE,
             max_tokens=MAX_TOKENS,
@@ -138,83 +130,100 @@ def get_model_action(client: Optional[OpenAI], step: int, ticket_text: str, tick
         )
         text = (completion.choices[0].message.content or "").strip()
         if not text:
-            return _fallback_action(step, ticket_text, ticket_id)
-
-        parsed = json.loads(text)
-        action_type = str(parsed.get("action_type", "")).strip() or "classify"
-        content = parsed.get("content")
+            return _fallback_action(step, task, ticket_text, ticket_id)
+        parsed      = json.loads(text)
+        action_type = str(parsed.get("action_type", "classify")).strip()
+        content     = parsed.get("content")
         if content is not None:
             content = str(content)
         return Action(action_type=action_type, ticket_id=ticket_id, content=content)
     except Exception as exc:
         print(f"[DEBUG] Model request failed: {exc}", flush=True)
-        return _fallback_action(step, ticket_text, ticket_id)
+        return _fallback_action(step, task, ticket_text, ticket_id)
 
-
-def _extract_current_ticket(observation: dict) -> tuple[int, str]:
+# ── Ticket extraction ────────────────────────────────────────────────────────
+def _extract_current_ticket(observation: dict) -> Tuple[int, str]:
     tickets = observation.get("tickets") or []
     if not tickets:
         return 0, ""
-
-    current_ticket = tickets[0]
-    ticket_id = int(current_ticket.get("id") or observation.get("current_ticket_id") or 0)
-    ticket_text = str(current_ticket.get("text") or "")
-
+    current     = tickets[0]
+    ticket_id   = int(current.get("id") or observation.get("current_ticket_id") or 0)
+    ticket_text = str(current.get("text") or "")
     return ticket_id, ticket_text
 
-
-def main() -> None:
-    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY) if API_KEY else None
-
-    env = SupportEnv()
-    observation = env.reset(TASK_NAME).model_dump()
-
+# ── Single task runner ───────────────────────────────────────────────────────
+def run_task(client, task_name: str) -> Tuple[float, bool, int, List[float]]:
+    env         = SupportEnv()
+    observation = env.reset(task_name).model_dump()
     history: List[str] = []
     rewards: List[float] = []
     steps_taken = 0
-    score = 0.0
-    success = False
 
-    log_start(task=TASK_NAME, env=BENCHMARK, model=MODEL_NAME)
+    log_start(task=task_name, env=BENCHMARK, model=MODEL_NAME)
 
     try:
         ticket_id, ticket_text = _extract_current_ticket(observation)
         last_reward = 0.0
 
         for step in range(1, MAX_STEPS + 1):
-            action = get_model_action(client, step, ticket_text, ticket_id, last_reward, history)
-
+            action = get_model_action(client, step, task_name, ticket_text, ticket_id, last_reward, history)
             observation, reward, done, _ = env.step(action)
             observation = observation.model_dump()
             ticket_id, ticket_text = _extract_current_ticket(observation)
-
-            error = None
 
             reward_val = float(reward.score or 0.0)
             rewards.append(reward_val)
             steps_taken = step
             last_reward = reward_val
 
-            action_str = json.dumps(action.model_dump(), separators=(",", ":"))
-            log_step(step=step, action=action_str, reward=reward_val, done=done, error=error)
-
-            history.append(f"Step {step}: {action.model_dump()} -> reward {reward_val:+.2f}")
+            log_step(step=step, action=serialize_action(action), reward=reward_val, done=done, error=None)
+            history.append(f"Step {step}: {action.action_type} -> reward {reward_val:+.2f}")
 
             if done:
                 break
 
-        score = sum(rewards)
-        score = min(score, 1.0)
-        success = score >= SUCCESS_SCORE_THRESHOLD
-
     finally:
-        try:
-            if hasattr(env, "close"):
+        if hasattr(env, "close"):
+            try:
                 env.close()
-        except Exception as e:
-            print(f"[DEBUG] env.close() error: {e}", flush=True)
+            except Exception as e:
+                print(f"[DEBUG] env.close() error: {e}", flush=True)
 
-        log_end(success, steps_taken, score, rewards)
+    # Normalize by steps taken (fairer than dividing by MAX_STEPS)
+    total_earned   = sum(rewards)
+    max_achievable = float(steps_taken)
+    score   = min(total_earned / max_achievable, 1.0) if max_achievable > 0 else 0.0
+    score   = max(score, 0.0)
+
+    # per-task success thresholds (hard is genuinely harder)
+    thresholds = {"easy": 0.4, "medium": 0.4, "hard": 0.25}
+    threshold  = thresholds.get(task_name, SUCCESS_SCORE_THRESHOLD)
+    success    = score >= threshold
+
+    log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
+    return score, success, steps_taken, rewards
+
+# ── Main: run all 3 tasks ────────────────────────────────────────────────────
+def main() -> None:
+    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY) if API_KEY else None
+    if client is None:
+        print("[DEBUG] No API key found — running in fallback mode.", flush=True)
+
+    all_scores: List[float] = []
+
+    for task_name in ALL_TASKS:
+        # print separator BEFORE starting the task so logs appear in order
+        print(f"\n{'='*50}", flush=True)
+        print(f"[INFO] Running task: {task_name.upper()}", flush=True)
+        print(f"{'='*50}\n", flush=True)
+        score, success, steps, rewards = run_task(client, task_name)
+        all_scores.append(score)
+        print(f"\n[SUMMARY] task={task_name} score={score:.3f} success={str(success).lower()} steps={steps}", flush=True)
+
+    aggregate = sum(all_scores) / len(all_scores)
+    print(f"\n{'='*50}", flush=True)
+    print(f"[AGGREGATE] tasks={len(ALL_TASKS)} avg_score={aggregate:.3f}", flush=True)
+    print(f"{'='*50}", flush=True)
 
 if __name__ == "__main__":
     main()

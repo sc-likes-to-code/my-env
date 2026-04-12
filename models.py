@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List, Dict
 
 class Ticket(BaseModel):
@@ -17,7 +17,7 @@ class Action(BaseModel):
     
     classification: Optional[str] = None
     priority: Optional[str] = None
-    extracted_fields: Dict[str, str] = {}
+    extracted_fields: Dict[str, str] = Field(default_factory=dict)  # ✅ FIXED
     escalate: bool = False
     ask_for_info: bool = False
 
