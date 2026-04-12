@@ -1,3 +1,21 @@
+---
+title: OpenEnv Customer Support Environment
+emoji: 🎫
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+pinned: false
+license: mit
+tags:
+  - openenv
+  - reinforcement-learning
+  - customer-support
+  - multi-step
+  - nlp
+  - real-world
+  - agent-evaluation
+---
+
 # 🎫 Support Ticket Resolution Environment (OpenEnv)
 
 A real-world, multi-step customer support simulation environment built on the **OpenEnv** framework. Designed to train and evaluate AI agents on tasks that mirror genuine human support workflows.
