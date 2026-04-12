@@ -174,7 +174,7 @@ def run_task(client, task_name: str) -> Tuple[float, bool, int, List[float]]:
             observation = observation.model_dump()
             ticket_id, ticket_text = _extract_current_ticket(observation)
 
-            reward_val = max(float(reward.score or 0.0), 0.01)
+            reward_val = max(min(float(reward.score or 0.05), 0.95), 0.05)
             rewards.append(reward_val)
             steps_taken = step
             last_reward = reward_val
@@ -195,8 +195,8 @@ def run_task(client, task_name: str) -> Tuple[float, bool, int, List[float]]:
     # Normalize by steps taken (fairer than dividing by MAX_STEPS)
     total_earned   = sum(rewards)
     max_achievable = float(steps_taken)
-    score   = min(total_earned / max_achievable, 0.99) if max_achievable > 0 else 0.01
-    score   = max(score, 0.01)
+    score = min(total_earned / max_achievable, 0.95) if max_achievable > 0 else 0.05
+    score = max(score, 0.05)
 
     # per-task success thresholds (hard is genuinely harder)
     thresholds = {"easy": 0.4, "medium": 0.4, "hard": 0.25}
