@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Dict
 
 class Ticket(BaseModel):
@@ -17,10 +17,15 @@ class Action(BaseModel):
     
     classification: Optional[str] = None
     priority: Optional[str] = None
-    extracted_fields: Dict[str, str] = Field(default_factory=dict)  # ✅ FIXED
+    extracted_fields: Dict[str, str] = Field(default_factory=dict)
     escalate: bool = False
     ask_for_info: bool = False
 
 class Reward(BaseModel):
     score: float
     feedback: str
+    
+    @field_validator('score')
+    @classmethod
+    def score_must_be_strictly_between_0_and_1(cls, v):
+        return round(max(min(float(v), 0.95), 0.05), 4)

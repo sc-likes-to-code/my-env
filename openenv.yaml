@@ -27,7 +27,7 @@ tasks:
       and provide an appropriate response acknowledging the issue.
     difficulty: easy
     max_steps: 8
-    reward_range: [0.0, 1.0]
+    reward_range: [0.05, 0.95]
 
   - id: medium
     name: "Sentiment-Aware Policy Resolution"
@@ -36,7 +36,7 @@ tasks:
       response that includes appropriate troubleshooting or refund language.
     difficulty: medium
     max_steps: 8
-    reward_range: [0.0, 1.0]
+    reward_range: [0.05, 0.95]
 
   - id: hard
     name: "Multi-Turn Memory-Based Resolution"
@@ -46,7 +46,7 @@ tasks:
       unnecessary escalation.
     difficulty: hard
     max_steps: 8
-    reward_range: [0.0, 1.0]
+    reward_range: [0.05, 0.95]
 
 observation_space:
   type: object
