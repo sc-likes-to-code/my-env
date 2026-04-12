@@ -41,6 +41,7 @@ class SupportEnv:
 
         # grade the action
         reward: Reward = evaluate_action(self.current_task, action, self.state_data)
+        reward.score = round(max(min(float(reward.score), 0.99), 0.01), 4)
 
         # update memory flags
         if action.action_type == "ask":
@@ -91,7 +92,7 @@ class SupportEnv:
 
         # EASY / MEDIUM: done after a valid respond action
         if self.task_level in ("easy", "medium"):
-            if action.action_type == "respond" and reward.score > 0.0:
+            if action.action_type == "respond" and reward.score > 0.01:
                 return True
 
         # HARD: done only after respond/escalate AND agent has asked for info
