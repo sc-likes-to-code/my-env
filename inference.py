@@ -195,8 +195,8 @@ def run_task(client, task_name: str) -> Tuple[float, bool, int, List[float]]:
     # Normalize by steps taken (fairer than dividing by MAX_STEPS)
     total_earned   = sum(rewards)
     max_achievable = float(steps_taken)
-    score   = min(total_earned / max_achievable, 1.0) if max_achievable > 0 else 0.0
-    score   = max(score, 0.0)
+    score   = min(total_earned / max_achievable, 0.99) if max_achievable > 0 else 0.01
+    score   = max(score, 0.01)
 
     # per-task success thresholds (hard is genuinely harder)
     thresholds = {"easy": 0.4, "medium": 0.4, "hard": 0.25}
