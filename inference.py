@@ -9,10 +9,13 @@ from server.your_environment import SupportEnv
 from models import Action
 
 # ── Environment / model config ──────────────────────────────────────────────
-API_KEY      = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
+HF_TOKEN     = os.getenv("HF_TOKEN")
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME   = os.getenv("MODEL_NAME",   "Qwen/Qwen2.5-72B-Instruct")
 BENCHMARK    = os.getenv("MY_ENV_V4_BENCHMARK", "support_env")
+
+if HF_TOKEN is None:
+    print("[DEBUG] No API key found — running in fallback mode.", flush=True)
 
 MAX_STEPS             = 8
 TEMPERATURE           = 0.7
@@ -30,9 +33,9 @@ def log_step(step: int, action: str, reward: float, done: bool, error: Optional[
     done_val  = str(done).lower()
     print(f"[STEP] step={step} action={action} reward={reward:.2f} done={done_val} error={error_val}", flush=True)
 
-def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> None:
+def log_end(success: bool, steps: int, rewards: List[float]) -> None:
     rewards_str = ",".join(f"{r:.2f}" for r in rewards)
-    print(f"[END] success={str(success).lower()} steps={steps} score={score:.3f} rewards={rewards_str}", flush=True)
+    print(f"[END] success={str(success).lower()} steps={steps} rewards={rewards_str}", flush=True)
 
 # ── Clean action serializer ──────────────────────────────────────────────────
 def serialize_action(action: Action) -> str:
@@ -200,12 +203,12 @@ def run_task(client, task_name: str) -> Tuple[float, bool, int, List[float]]:
     threshold  = thresholds.get(task_name, SUCCESS_SCORE_THRESHOLD)
     success    = score >= threshold
 
-    log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
+    log_end(success=success, steps=steps_taken, rewards=rewards)
     return score, success, steps_taken, rewards
 
 # ── Main: run all 3 tasks ────────────────────────────────────────────────────
 def main() -> None:
-    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY) if API_KEY else None
+    client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN) if HF_TOKEN else None
     if client is None:
         print("[DEBUG] No API key found — running in fallback mode.", flush=True)
 
