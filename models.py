@@ -27,5 +27,5 @@ class Reward(BaseModel):
     
     @field_validator('score')
     @classmethod
-    def score_must_be_strictly_between_0_and_1(cls, v):
-        return round(max(min(float(v), 0.95), 0.05), 4)
+    def score_must_be_valid(cls, v):
+        return round(max(min(float(v), 0.99), 0.01), 2)

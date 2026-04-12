@@ -102,7 +102,7 @@ def evaluate_action(task: dict, action, state: dict) -> Reward:
                     penalty += 0.2  # unnecessary escalation
 
         # efficiency bonus — resolved within 3 steps
-        if step <= 3 and action.action_type in ("respond", "escalate"):
+        if step <= 3 and action.action_type in ("respond", "escalate") and state.get("asked_info"):
             score += 0.1
 
     # ──────────────────────────────────────────────
@@ -113,7 +113,7 @@ def evaluate_action(task: dict, action, state: dict) -> Reward:
         if last_actions and last_actions[-1] == action.action_type:
             penalty += 0.2
 
-    final_score = round(max(min(score - penalty, 0.95), 0.05), 4)
+    final_score = round(max(min(score - penalty, 0.99), 0.01), 2)
 
     return Reward(
         score=final_score,
