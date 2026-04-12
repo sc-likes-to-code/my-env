@@ -1,150 +1,218 @@
-# Support Ticket Resolution Environment (OpenEnv)
+# 🎫 Support Ticket Resolution Environment (OpenEnv)
 
-## Overview
-This project implements a real-world customer support simulation environment using the OpenEnv framework.
+A real-world, multi-step customer support simulation environment built on the **OpenEnv** framework. Designed to train and evaluate AI agents on tasks that mirror genuine human support workflows.
 
-It is designed to evaluate AI agents on multi-step decision-making tasks that closely resemble real human workflows.
+---
 
-Unlike toy environments, this system simulates:
-- Ticket classification
-- Information extraction
-- Policy-aware responses
-- Multi-turn resolution workflows
+## 🌍 Overview
 
-## Motivation
-Customer support is a high-impact real-world domain where agents must:
-- Understand ambiguous user queries
-- Follow company policies
-- Make multi-step decisions
-- Balance speed and correctness
+Unlike toy RL environments, this system simulates a realistic customer support pipeline where an agent must:
 
-This environment provides a realistic benchmark for testing such capabilities.
+- Classify support tickets by issue type
+- Detect sentiment and apply policy-aware responses
+- Ask clarifying questions when information is missing
+- Use conversation memory across turns
+- Decide whether to resolve or escalate issues
 
-## Environment Design
+This makes it a high-value benchmark for evaluating **multi-step reasoning**, **policy compliance**, and **stateful decision-making** in AI agents.
 
-### Core API
-```python
-reset(task: str) -> Observation
-step(action: Action) -> (Observation, Reward, done, info)
-state() -> dict
+---
+
+## 🏗️ Project Structure
+
+```
+my-env/
+├── inference.py          # Baseline agent — runs all 3 tasks
+├── models.py             # Pydantic models: Action, Observation, Reward
+├── openenv.yaml          # OpenEnv spec metadata (name, tasks, spaces, rewards)
+├── requirements.txt      # Python dependencies
+├── Dockerfile            # Container definition
+├── client.py             # HTTP client for the environment
+├── __init__.py           # Root package
+└── server/
+    ├── __init__.py       # Server package
+    ├── app.py            # FastAPI server (reset / step / state / health)
+    ├── grader.py         # Task graders with reward shaping
+    ├── tasks.py          # Task definitions (easy / medium / hard)
+    └── your_environment.py  # Core SupportEnv class
 ```
 
-### Observation Space
+---
+
+## 📜 OpenEnv Spec (`openenv.yaml`)
+
+This environment is fully compliant with the OpenEnv specification:
+
+```yaml
+name: openenv-customer-support-env
+version: "1.0.0"
+tags: [openenv]
+entrypoint: server.app:app
+tasks:
+  - id: easy   | difficulty: easy   | max_steps: 6
+  - id: medium | difficulty: medium | max_steps: 6
+  - id: hard   | difficulty: hard   | max_steps: 8
+```
+
+Validated via:
+```bash
+openenv validate
+```
+
+---
+
+## ⚙️ Core API
+
+```python
+reset(task: str) -> Observation        # Initialize episode for given task
+step(action: Action) -> (Observation, Reward, done, info)  # Take one action
+state() -> dict                        # Inspect full current episode state
+```
+
+### HTTP Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/reset?task=easy` | Start a new episode |
+| `POST` | `/step` | Submit an action |
+| `GET`  | `/state` | Get current episode state |
+| `GET`  | `/health` | Health check (returns 200) |
+
+---
+
+## 📊 Observation Space
+
 ```json
 {
   "tickets": [
-    {"id": int, "text": str}
+    {"id": 1, "text": "Customer message here"}
   ],
-  "current_ticket_id": int
+  "current_ticket_id": 1,
+  "history": [
+    {"user": "...", "agent": "...", "action_type": "classify"}
+  ]
 }
 ```
 
-Represents the current support ticket context.
+---
 
-### Action Space
+## 🎮 Action Space
+
 ```python
 Action(
-  action_type: str,  # classify / respond / escalate / ask
-  ticket_id: int,
-  content: Optional[str]
+    action_type: str,       # "classify" | "respond" | "escalate" | "ask"
+    ticket_id: int,         # ID of the ticket being handled
+    content: Optional[str]  # Classification label or response text
 )
 ```
 
-## Action Types
-- classify → categorize issue
-- respond → provide resolution
-- ask → request missing info
-- escalate → hand off to human
+| Action | Purpose |
+|--------|---------|
+| `classify` | Categorize the issue: `billing` or `technical` |
+| `respond` | Provide a resolution or acknowledgment |
+| `ask` | Request missing information from the user |
+| `escalate` | Hand off to a human agent |
 
-## Tasks
+---
 
-### Easy — Classification + Priority
-Agent must:
-- Classify issue (billing / technical)
-- Assign priority (low / medium / high)
+## 📋 Tasks
 
-Reward:
-- 0.5 → classification
-- 0.5 → priority
+### 🟢 Easy — Ticket Classification & Response
+**Max steps:** 6
 
-### Medium — Resolution + Policy Compliance
-Agent must:
-- Identify issue
-- Detect sentiment
-- Generate policy-compliant response
+Agent must classify the ticket and provide an appropriate response.
 
-Includes:
-- refund rules
-- troubleshooting steps
+| Step | Action | Reward |
+|------|--------|--------|
+| 1 | Correct classification (`billing`/`technical`) | +0.5 |
+| 2 | Response with refund/sorry keywords | +0.4 |
+| 2 | Urgency keyword bonus (urgent/immediately) | +0.1 |
 
-Reward:
-- 0.3 → extraction
-- 0.3 → policy compliance
-- 0.4 → response quality
+**Max achievable:** 1.0
 
-### Hard — Multi-Turn Resolution (Memory-Based)
-Agent must:
-- Classify issue
-- Ask for missing info
-- Use conversation memory
-- Decide: resolve / escalate
-- Generate final response
+---
 
-Key features:
-- Stateful multi-step interaction
-- Session-based memory (avoid repetition)
+### 🟡 Medium — Sentiment-Aware Policy Resolution
+**Max steps:** 6
 
-Reward:
-- 0.2 → classification
-- 0.2 → appropriate question
-- 0.2 → correct decision
-- 0.3 → response quality
-- 0.1 → efficiency
+Agent must detect issue type, show empathy, and generate a policy-compliant response.
 
-Bonuses & Penalties:
-- +0.1 → correct memory usage
-- −0.1 → unnecessary escalation
-- −0.1 → irrelevant response
-- −0.2 → repeated actions
+| Step | Action | Reward |
+|------|--------|--------|
+| 1 | Correct classification | +0.3 |
+| 2 | Empathetic language (sorry/understand/apologize) | +0.3 |
+| 2 | Policy-compliant response (fix/refund keywords) | +0.4 |
 
-## Reward Design
-This environment uses dense reward shaping:
-- Partial rewards for intermediate steps
-- Encourages structured reasoning
-- Penalizes inefficient or incorrect behavior
+**Max achievable:** 1.0
 
-Ensures meaningful learning across the entire trajectory.
+---
 
-## Baseline Agent (inference.py)
-The baseline agent:
-- Uses OpenAI-compatible API
-- Performs multi-step reasoning
-- Outputs structured logs
+### 🔴 Hard — Multi-Turn Memory-Based Resolution
+**Max steps:** 8
 
-### Output Format
-```
-[START] ...
-[STEP] ...
-[END] ...
-```
+Agent must follow the full sequence: classify → ask → respond, using conversation memory.
 
-## Features
-- Step-aware prompting
-- JSON action generation
-- Fallback safety (no crashes)
+| Step | Action | Reward |
+|------|--------|--------|
+| 1 | Correct classification | +0.2 |
+| 2 | Ask for missing info (transaction ID etc.) | +0.2 |
+| 3+ | Response with correct keywords | +0.3 |
+| 3+ | Memory bonus (asked_info was used) | +0.1 |
+| Any | Efficiency bonus (resolved in ≤3 steps) | +0.1 |
+| Any | Correct escalation decision | +0.1 |
 
-## Setup Instructions
+**Penalties:**
+
+| Condition | Penalty |
+|-----------|---------|
+| Respond at step 2 without asking first | −0.3 |
+| Unnecessary escalation | −0.2 |
+| Repeated action type | −0.2 |
+
+**Max achievable:** 1.0
+
+---
+
+## 🏆 Reward Design
+
+This environment uses **dense reward shaping** — agents receive meaningful signal at every step, not just at episode end.
+
+- Partial credit for each correct intermediate action
+- Efficiency bonuses for faster resolution
+- Memory bonuses for using context from prior turns
+- Penalties for skipping required steps, repeating actions, or escalating unnecessarily
+- Episode ends early on near-perfect score (≥0.95) or after max steps
+
+---
+
+## 📈 Baseline Scores
+
+Achieved by the fallback rule-based agent (no LLM, no API key required):
+
+| Task | Score | Success | Steps |
+|------|-------|---------|-------|
+| Easy | 0.500 | ✅ | 2 |
+| Medium | 0.500 | ✅ | 2 |
+| Hard | 0.300 | ✅ | 3 |
+| **Aggregate** | **0.433** | | |
+
+> A frontier LLM agent is expected to score significantly higher.
+
+---
+
+## 🚀 Setup Instructions
 
 ### Clone repository
 ```bash
 git clone <repo-url>
-cd support-env
+cd my-env
 ```
 
 ### Create virtual environment
 ```bash
 python -m venv venv
-venv\Scripts\activate   # Windows
+venv\Scripts\activate      # Windows
+source venv/bin/activate   # Linux/Mac
 ```
 
 ### Install dependencies
@@ -152,54 +220,80 @@ venv\Scripts\activate   # Windows
 pip install -r requirements.txt
 ```
 
-## Environment Variables
-Set these before running:
-```bash
-API_BASE_URL=<your-endpoint>
-MODEL_NAME=<model-name>
-HF_TOKEN=<your-api-key>
-```
+---
 
-## Run Inference
+## 🔐 Environment Variables
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `HF_TOKEN` | ✅ Yes | — | Your Hugging Face API token |
+| `API_BASE_URL` | No | `https://router.huggingface.co/v1` | LLM API endpoint |
+| `MODEL_NAME` | No | `Qwen/Qwen2.5-72B-Instruct` | Model identifier |
+
+> If no API key is set, the agent runs in **fallback mode** using rule-based actions. All 3 tasks still complete successfully.
+
+---
+
+## ▶️ Run Inference
+
 ```bash
 python inference.py
 ```
 
-## Docker Usage
-```bash
-docker build -t support-env .
-docker run support-env
+Runs all 3 tasks in sequence and outputs:
+
+```
+[START] task=easy env=support_env model=Qwen/Qwen2.5-72B-Instruct
+[STEP] step=1 action={...} reward=0.50 done=false error=null
+[STEP] step=2 action={...} reward=0.50 done=true error=null
+[END] success=true steps=2 score=0.500 rewards=0.50,0.50
+[SUMMARY] task=easy score=0.500 success=true steps=2
+...
+[AGGREGATE] tasks=3 avg_score=0.433
 ```
 
-## Deployment
-Designed for Hugging Face Spaces (Docker):
-- Fully containerized
-- Lightweight (CPU-friendly)
-- Fast runtime (<20 min)
+---
 
-## Evaluation Criteria
-This environment is evaluated on:
-- Real-world utility
-- Task difficulty progression
-- Reward design quality
-- Agent consistency
+## 🐳 Docker Usage
 
-## Key Highlights
-- Real-world support workflow simulation
-- Multi-step reasoning environment
-- Policy-aware decision making
-- Dense reward shaping
-- Robust evaluation pipeline
+```bash
+docker build -t support-env .
+docker run -p 7860:7860 support-env
+```
 
-## Future Improvements
+Test endpoints:
+```bash
+curl -X POST http://localhost:7860/reset?task=easy
+curl http://localhost:7860/health
+```
+
+---
+
+## ✅ OpenEnv Validation
+
+```bash
+pip install openenv-core
+openenv validate
+```
+
+---
+
+## ☁️ Deployment
+
+Deployed as a **Hugging Face Docker Space** — fully containerized, CPU-friendly, and responds within the 20-minute inference runtime limit.
+
+---
+
+## 🔮 Future Improvements
+
 - Multi-ticket queue handling
-- Memory across conversations
-- Advanced policy systems
+- Memory persistence across episodes
+- Advanced policy rule engine
 - Human-in-the-loop simulation
+- More task difficulty levels
 
-## Conclusion
-This environment bridges the gap between:
-- Toy RL tasks
-- Real-world AI agent evaluation
+---
 
-Making it highly valuable for training and benchmarking next-generation AI systems.
+## 📄 License
+
+MIT
