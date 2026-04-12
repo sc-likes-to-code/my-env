@@ -1,19 +1,17 @@
+import uvicorn
 from fastapi import FastAPI, HTTPException, Query
 from contextlib import asynccontextmanager
-from typing import Optional
 import traceback
 
 from server.your_environment import SupportEnv
 from models import Action
 
-# ── App lifespan (replaces deprecated @app.on_event) ────────────────────────
+# ── App lifespan ─────────────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # startup: pre-initialize environment
     app.state.env = SupportEnv()
     app.state.env.reset("easy")
     yield
-    # shutdown: cleanup
     try:
         app.state.env.close()
     except Exception:
@@ -30,7 +28,7 @@ app = FastAPI(
 VALID_TASKS = {"easy", "medium", "hard"}
 
 
-# ── Health check (judges ping this to verify Space is live) ──────────────────
+# ── Health check ─────────────────────────────────────────────────────────────
 @app.get("/")
 @app.get("/health")
 def health():
@@ -57,7 +55,6 @@ def reset(
 # ── step ─────────────────────────────────────────────────────────────────────
 @app.post("/step")
 def step(action: dict):
-    # auto-recover if env was never reset
     if app.state.env.state_data is None:
         app.state.env.reset("easy")
 
@@ -92,3 +89,17 @@ def state():
         return app.state.env.state()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"state() failed: {str(e)}")
+
+
+# ── main ─────────────────────────────────────────────────────────────────────
+def main():
+    uvicorn.run(
+        "server.app:app",
+        host="0.0.0.0",
+        port=7860,
+        reload=False,
+    )
+
+
+if __name__ == "__main__":
+    main()

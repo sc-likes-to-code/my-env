@@ -2,14 +2,20 @@
 name = "openenv-customer-support-env"
 version = "0.1.0"
 description = "Customer support OpenEnv with multi-step reasoning and memory"
-authors = [{ name = "Your Name" }]
+authors = [{ name = "Shourjya Chakraborty" }]
+requires-python = ">=3.10"
 dependencies = [
     "fastapi",
     "uvicorn",
     "pydantic",
     "requests",
-    "openai"
+    "openai",
+    "openenv-core>=0.2.0",
+    "python-multipart",
 ]
+
+[project.scripts]
+server = "server.app:main"
 
 [build-system]
 requires = ["setuptools"]
