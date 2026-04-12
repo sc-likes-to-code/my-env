@@ -113,7 +113,7 @@ def evaluate_action(task: dict, action, state: dict) -> Reward:
         if last_actions and last_actions[-1] == action.action_type:
             penalty += 0.2
 
-    final_score = round(max(min(score - penalty, 1.0), 0.0), 4)
+    final_score = round(max(min(score - penalty, 0.99), 0.01), 4)
 
     return Reward(
         score=final_score,

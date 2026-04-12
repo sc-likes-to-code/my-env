@@ -209,8 +209,6 @@ def run_task(client, task_name: str) -> Tuple[float, bool, int, List[float]]:
 # ── Main: run all 3 tasks ────────────────────────────────────────────────────
 def main() -> None:
     client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN) if HF_TOKEN else None
-    if client is None:
-        print("[DEBUG] No API key found — running in fallback mode.", flush=True)
 
     all_scores: List[float] = []
 
