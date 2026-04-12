@@ -43,7 +43,9 @@ my-env/
 ├── inference.py          # Baseline agent — runs all 3 tasks
 ├── models.py             # Pydantic models: Action, Observation, Reward
 ├── openenv.yaml          # OpenEnv spec metadata (name, tasks, spaces, rewards)
+├── pyproject.toml        # Project metadata and dependencies
 ├── requirements.txt      # Python dependencies
+├── uv.lock               # Locked dependency versions
 ├── Dockerfile            # Container definition
 ├── client.py             # HTTP client for the environment
 ├── __init__.py           # Root package
@@ -264,7 +266,7 @@ Runs all 3 tasks in sequence and outputs:
 [START] task=easy env=support_env model=Qwen/Qwen2.5-72B-Instruct
 [STEP] step=1 action={...} reward=0.50 done=false error=null
 [STEP] step=2 action={...} reward=0.50 done=true error=null
-[END] success=true steps=2 score=0.500 rewards=0.50,0.50
+[END] success=true steps=2 rewards=0.50,0.50
 [SUMMARY] task=easy score=0.500 success=true steps=2
 ...
 [AGGREGATE] tasks=3 avg_score=0.433

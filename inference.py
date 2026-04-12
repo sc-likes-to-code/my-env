@@ -174,7 +174,7 @@ def run_task(client, task_name: str) -> Tuple[float, bool, int, List[float]]:
             observation = observation.model_dump()
             ticket_id, ticket_text = _extract_current_ticket(observation)
 
-            reward_val = float(reward.score or 0.0)
+            reward_val = max(float(reward.score or 0.0), 0.01)
             rewards.append(reward_val)
             steps_taken = step
             last_reward = reward_val
